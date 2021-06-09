@@ -1,5 +1,6 @@
 #include "chip8.h"
 
+
 uint8_t fontset[80] =
 {
 		0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -60,6 +61,50 @@ Chip8::Chip8()
 	delayt = 0;
 	soundt = 0;
 
+	
+	MasterTable[0x0] = &Chip8::opcodes0;
+	MasterTable[0x1] = &Chip8::OP_1nnn;
+	MasterTable[0x2] = &Chip8::OP_2nnn;
+	MasterTable[0x3] = &Chip8::OP_3xkk;
+	MasterTable[0x4] = &Chip8::OP_4xkk;
+	MasterTable[0x5] = &Chip8::OP_5xy0;
+	MasterTable[0x6] = &Chip8::OP_6xkk;
+	MasterTable[0x7] = &Chip8::OP_7xkk;
+	MasterTable[0x8] = &Chip8::opcodes8;
+	MasterTable[0x9] = &Chip8::OP_9xy0;
+	MasterTable[0xA] = &Chip8::OP_Annn;
+	MasterTable[0xB] = &Chip8::OP_Bnnn;
+	MasterTable[0xC] = &Chip8::OP_Cxkk;
+	MasterTable[0xD] = &Chip8::OP_Dxyn;
+	MasterTable[0xE] = &Chip8::opcodesE;
+	MasterTable[0xF] = &Chip8::opcodesF;
+
+	TableOf0[0x0] = &Chip8::OP_00E0;
+	TableOf0[0xE] = &Chip8::OP_00EE;
+
+	TableOf8[0x0] = &Chip8::OP_8xy0;
+	TableOf8[0x1] = &Chip8::OP_8xy1;
+	TableOf8[0x2] = &Chip8::OP_8xy2;
+	TableOf8[0x3] = &Chip8::OP_8xy3;
+	TableOf8[0x4] = &Chip8::OP_8xy4;
+	TableOf8[0x5] = &Chip8::OP_8xy5;
+	TableOf8[0x6] = &Chip8::OP_8xy6;
+	TableOf8[0x7] = &Chip8::OP_8xy7;
+	TableOf8[0xE] = &Chip8::OP_8xyE;
+
+	TableOfE[0xE] = &Chip8::OP_Ex9E;
+	TableOfE[0x1] = &Chip8::OP_ExA1;
+
+	TableOfF[0x07] = &Chip8::OP_Fx07;
+	TableOfF[0x0A] = &Chip8::OP_Fx0A;
+	TableOfF[0x15] = &Chip8::OP_Fx15;
+	TableOfF[0x18] = &Chip8::OP_Fx18;
+	TableOfF[0x1E] = &Chip8::OP_Fx1E;
+	TableOfF[0x29] = &Chip8::OP_Fx29;
+	TableOfF[0x33] = &Chip8::OP_Fx33;
+	TableOfF[0x55] = &Chip8::OP_Fx55;
+	TableOfF[0x65] = &Chip8::OP_Fx65;
+
 }
 
 
@@ -87,368 +132,12 @@ void Chip8::LoadRom(char const* filename)
 
 void Chip8::EmulationCycle()
 {
-	opcode = ((memory[pc] << 8) | memory[pc + 1]);	//Fetch Opcode
+	opcode = ((memory[pc] << 8) | memory[pc +1]);	//Fetch opcode
 
-	switch (opcode & 0xF000)						//Decode Opcode
-	{
-	case 0x0000:
-	{
-		switch(opcode & 0x000F)
-		{
-				case 0x0000:		//Clears the display
-				{
-					for (int i = 0; i < (64 * 32); i++)
-					{
-						display[i] = 0;
-					}
-					
-					pc += 2;
-				}
-					break;
-				case 0x000E:		//Returns from subroutine
-				{	
-					--sp;
-					pc = stack[sp];
-					pc += 2;
-				}
-					break;
 
-				default:
-					printf("Unknown opcode [0000]: 0x%X\n", opcode);
-		}
-	}
-	break;
+	(this->*(MasterTable[(opcode & 0xF000) >> 12]))();
 
-	case 0x1000:					//Sets program counter to NNN
-		pc = (opcode & 0x0FFF);
-		
-		break;
-	case 0x2000:					//Calls subroutine from NNN
-		
-		stack[sp] = pc;
-		sp++;
-		pc = (opcode & 0x0FFF);
-		
-		break;
-	case 0x3000:					//Skips the next instruction if VX equals NN
-		if (registers[(opcode & 0x0F00) >> 8]  == (opcode & 0x00FF))
-		{
-			pc += 4;
-		}
 
-		else pc += 2;
-
-		break;
-	case 0x4000:					//Skips the next instruction if VX is not equal to NN
-		if (registers[(opcode & 0x0F00) >> 8]  != (opcode & 0x00FF))
-		{
-			pc += 4;
-		}
-
-		else pc += 2;
-
-		break;
-	case 0x5000:					//Skips the next instruction if VX equals VY
-		
-		if (registers[(opcode & 0x0F00) >> 8] == registers[(opcode  & 0x00F0) >> 4] )
-		{
-			pc += 4;
-		}
-		
-		else pc += 2;
-			
-		break;
-	case 0x6000:					//Sets Vx to NN
-
-		registers[(opcode & 0x0F00) >> 8] = (opcode & 0x00FF);
-		pc += 2;
-		
-		break;
-	case 0x7000:					//Adds NN to Vx
-		
-		registers[(opcode & 0x0F00) >> 8] += (opcode & 0x00FF);
-		pc += 2;
-		
-		break;
-	case 0x8000:
-	{
-		switch (opcode & 0x000F)
-		{
-				case 0x0000:		//Sets Vx = Vy
-					registers[(opcode & 0x0F00) >> 8] = registers[(opcode & 0x00F0) >> 4];
-				    pc += 2;
-					
-					break;
-				case 0x0001:		//Sets Vx |= Vy
-					registers[(opcode & 0x0F00) >> 8] |= registers[(opcode & 0x00F0) >> 4];
-					pc += 2;
-					
-					break;
-				case 0x0002:		//Sets Vx &= Vy
-					registers[(opcode & 0x0F00) >> 8] &= registers[(opcode & 0x00F0) >> 4];
-					pc += 2;
-					
-					break;
-				case 0x0003:		//Sets Vx ^= Vy
-					registers[(opcode & 0x0F00) >> 8] ^= registers[(opcode & 0x00F0) >> 4];
-					pc += 2;
-					
-					break;
-				case 0x0004:		//Sets Vx += Vy, sets carry flag if Vx + Vy is bigger than 255
-					
-					
-					if((registers[(opcode & 0x0F00) >> 8] + registers[(opcode & 0x00F0) >> 4]) > 255)
-					{
-						registers[0xF] = 1;
-					}
-
-					else 
-					{
-						registers[0xF] = 0;
-					}
-
-					registers[(opcode & 0x0F00) >> 8] += registers[(opcode & 0x00F0) >> 4];
-					pc += 2;
-					
-					break;
-				case 0x0005:		//Sets 	Vx -= Vy, sets carry flag if theres a borrow
-				{	
-					
-					if(registers[(opcode & 0x0F00) >> 8] > registers[(opcode & 0x00F0) >> 4])
-					{
-						registers[0xF] = 1;
-					}
-					
-					else 
-					{
-						registers[0xF] = 0;
-					}
-					
-					registers[(opcode & 0x0F00) >> 8] -= registers[(opcode & 0x00F0) >> 4];
-					pc += 2;
-
-				}	
-					break;
-
-				case 0x0006:		//Sets VF = The least significant bit of Vx, then shifts Vx right once
-					
-					registers[0xF] = (registers[(opcode & 0x0F00) >> 8] & 0x1);
-					registers[(opcode & 0x0F00) >> 8] >>= 1;
-					pc += 2;
-
-					break;
-				case 0x0007:		//Sets Vx = Vy - Vx, sets VF when theres a borrow
-				{
-					
-					if(registers[(opcode & 0x00F0) >> 4] > registers[(opcode & 0x0F00) >> 8])
-					{
-						registers[0xF] = 1;
-					}
-					
-					else 
-					{
-						registers[0xF] = 0;
-					}
-					
-					registers[(opcode & 0x0F00) >> 8] = registers[(opcode & 0x00F0) >> 4] - registers[(opcode & 0x0F00) >> 8];
-					pc += 2;
-					
-				}
-
-					break;
-				case 0x000E:		//Sets the most significant bit of Vx in VF, then shifts Vx left once
-					
-					registers[0xF] = ((registers[(opcode & 0x0F00) >> 8] & 0x80) >> 7);
-					registers[(opcode & 0x0F00) >> 8] <<= 1;
-					pc += 2;
-
-					break;
-
-				default:
-					printf("Unknown opcode [8000]: 0x%X\n", opcode);
-		}
-	}
-	break;
-	
-	case 0x9000:		//Skips the next instruction if Vx != Vy
-		if (registers[(opcode & 0x0F00) >> 8] != registers[(opcode & 0x00F0) >> 4])
-		{
-			pc += 4;
-		}
-
-		else pc += 2;
-		
-		break;
-	case 0xA000:		//Sets the Index register to NNN
-		
-		ireg = (opcode & 0x0FFF);
-		pc += 2;
-		
-		break;
-	case 0xB000:		//Sets Program Counter to V0 + NNN
-		pc = registers[0x0] + (opcode & 0x0FFF);
-
-		break;
-	case 0xC000:		//Sets Vx to rand() & NN
-		
-		registers[(opcode & 0x0F00) >> 8] = ((rand() % 255) & (opcode & 0x00FF));
-		pc += 2;
-
-		break;
-	case 0xD000:		//Draws sprite at coordinate Vx, Vy
-	{
-			unsigned char Vx = registers[(opcode & 0x0F00) >> 8];
-			unsigned char Vy = registers[(opcode & 0x00F0) >> 4];
-			unsigned char height = (opcode & 0x000F);
-			unsigned short pixel;
-
-			
-			registers[0xF] = 0;
-			
-			for (long iHeight = 0; iHeight < height; iHeight++)
-			{
-				pixel = memory[ireg + iHeight];
-				
-				for(long width = 0; width < 8; width++)
-				{
-					if((pixel & (0x80 >> width)) != 0)
-					{
-						if(display[((Vx + width) + ((Vy + iHeight) * 64))] == 0xFFFFFFFF)
-						{
-							registers[0xF] = 1;                                    
-						}
-
-						display[(Vx + width) + ((Vy + iHeight) * 64)] ^= 0xFFFFFFFF;
-					}
-				}
-			}
-	
-			pc += 2;
-			
-	}
-	break;
-
-	case 0xE000:		
-	{
-		switch(opcode & 0x00FF)
-		{
-				case 0x009E:		//Skips the next instruction if the key stored in VX is pressed
-					if(keys[registers[(opcode & 0x0F00) >> 8]] != 0)
-					{
-						pc += 4;
-					}
-					
-					else pc += 2;
-
-					break;
-				case 0x00A1:		//Skips the next instruction if the key stored in VX is not pressed
-					if(keys[registers[(opcode & 0x0F00) >> 8]] == 0)
-					{
-						pc += 4;
-					}
-					
-					else pc += 2;
-					break;
-
-				default:
-					printf ("Unknown opcode [E000]: 0x%X\n", opcode);
-		}
-	}
-	break;
-
-	case 0xF000:
-	{
-		switch(opcode & 0x00FF)
-		{	
-	
-				case 0x0007:		//Sets VX to the value of the delay timer. 
-					
-					registers[(opcode & 0x0F00) >> 8] = delayt;
-					pc += 2;
-
-					break;
-				case 0x000A:		//A key press is awaited, and then stored in Vx
-				{
-					bool keyPress = false;
-
-					for(int i = 0; i < 16; ++i)
-					{
-						if(keys[i] != 0)
-						{
-							registers[(opcode & 0x0F00) >> 8] = i;
-							keyPress = true;
-						}
-					}
-
-					
-					if(!keyPress)						
-						return;
-
-					pc += 2;	
-				}	
-				break;
-				case 0x0015:		//Sets the delay timer to Vx
-					delayt = registers[(opcode & 0x0F00) >> 8];
-					pc += 2;
-
-					break;
-				case 0x0018:		//Sets the sound timer to Vx
-					
-					soundt = registers[(opcode & 0x0F00) >> 8];
-					pc += 2;
-
-					break;
-				case 0x001E:		//Sets Index += Vx
-					
-					ireg += registers[(opcode & 0x0F00) >> 8];
-					pc += 2;
-
-					break;
-				case 0x0029:		//Sets Index to the location of the sprite in Vx
-					
-					ireg = 0x50 + (registers[(opcode & 0x0F00) >> 8] * 0x5);
-					pc += 2;
-
-					break;
-				case 0x0033:		//Stores the binary coded representation of Vx in memory starting at Index
-				{	
-					memory[ireg]     = registers[(opcode & 0x0F00) >> 8] / 100;
-					memory[ireg + 1] = (registers[(opcode & 0x0F00) >> 8] / 10) % 10;
-					memory[ireg + 2] = (registers[(opcode & 0x0F00) >> 8] % 100) % 10;					
-					pc += 2;
-				}
-					break;
-				case 0x0055:		//Stores V0 to Vx in memory starting at address Index.
-				{	
-					for(long i = 0; i <= ((opcode & 0x0F00)>> 8); i++)
-					{
-						memory[ireg + i] = registers[i];
-					}
-										
-					pc += 2;
-				}
-					break;
-				case 0x0065:		//Fills V0 to Vx with values from memory starting at address Index
-					
-					for(uint8_t i = 0; i <= ((opcode & 0x0F00) >> 8); i++)
-					{
-						registers[i] = memory[ireg + i];
-					}
-					
-					pc += 2;
-					break;
-
-				default:
-					printf ("Unknown opcode [0xF000]: 0x%X\n", opcode);
-		}
-	
-		break;
-
-		default:
-			printf ("Unknown opcode: 0x%X\n", opcode);
-
-	}
-}
 	if (delayt > 0)
 	{
 		--delayt;
@@ -460,4 +149,304 @@ void Chip8::EmulationCycle()
 	}
 
 	
+}
+
+
+void Chip8::opcodes0()
+{
+	(this->*(TableOf0[opcode & 0x000F]))();
+}
+
+void Chip8::opcodes8()
+{
+	(this->*(TableOf8[opcode & 0x000F]))();
+}
+
+void Chip8::opcodesE()
+{
+	(this->*(TableOfE[opcode & 0x000F]))();
+}
+
+void Chip8::opcodesF()
+{
+	(this->*(TableOfF[opcode & 0x00FF]))();
+}
+
+void Chip8::OP_00E0()
+{
+	for (int i = 0; i < (64 * 32); i++)
+		{
+			display[i] = 0;
+		}
+					
+			pc += 2;
+}
+void Chip8::OP_00EE()
+{
+	--sp;
+	pc = stack[sp];
+	pc += 2;
+}
+void Chip8::OP_1nnn()
+{
+	pc = (opcode & 0x0FFF);
+}
+void Chip8::OP_2nnn()
+{
+	stack[sp] = pc;
+	sp++;
+	pc = (opcode & 0x0FFF);
+}
+void Chip8::OP_3xkk()
+{
+	if (registers[(opcode & 0x0F00) >> 8]  == (opcode & 0x00FF))
+	{
+		pc += 4;
+	}
+
+	else pc += 2;
+}
+void Chip8::OP_4xkk()
+{
+	if (registers[(opcode & 0x0F00) >> 8]  != (opcode & 0x00FF))
+	{
+		pc += 4;
+	}
+	
+	else pc += 2;
+
+}
+void Chip8::OP_5xy0()
+{
+	if (registers[(opcode & 0x0F00) >> 8] == registers[(opcode  & 0x00F0) >> 4] )
+	{
+		pc += 4;
+	}
+	
+	else pc += 2;
+}
+void Chip8::OP_6xkk()
+{
+	registers[(opcode & 0x0F00) >> 8] = (opcode & 0x00FF);
+	pc += 2;
+}
+void Chip8::OP_7xkk()
+{
+	registers[(opcode & 0x0F00) >> 8] += (opcode & 0x00FF);
+	pc += 2;
+}
+void Chip8::OP_8xy0()
+{
+	registers[(opcode & 0x0F00) >> 8] = registers[(opcode & 0x00F0) >> 4];
+	pc += 2;
+}
+void Chip8::OP_8xy1()
+{
+	registers[(opcode & 0x0F00) >> 8] |= registers[(opcode & 0x00F0) >> 4];
+	pc += 2;
+}
+void Chip8::OP_8xy2()
+{
+	registers[(opcode & 0x0F00) >> 8] &= registers[(opcode & 0x00F0) >> 4];
+	pc += 2;
+}
+void Chip8::OP_8xy3()
+{
+	registers[(opcode & 0x0F00) >> 8] ^= registers[(opcode & 0x00F0) >> 4];
+	pc += 2;
+}
+void Chip8::OP_8xy4()
+{
+	if((registers[(opcode & 0x0F00) >> 8] + registers[(opcode & 0x00F0) >> 4]) > 255)
+	{
+		registers[0xF] = 1;
+	}
+	
+	else 
+	{
+		registers[0xF] = 0;
+	}
+	
+	registers[(opcode & 0x0F00) >> 8] += registers[(opcode & 0x00F0) >> 4];
+	pc += 2;
+}
+void Chip8::OP_8xy5()
+{
+	if(registers[(opcode & 0x0F00) >> 8] > registers[(opcode & 0x00F0) >> 4])
+	{
+		registers[0xF] = 1;
+	}
+					
+	else 
+	{
+		registers[0xF] = 0;
+	}
+					
+	registers[(opcode & 0x0F00) >> 8] -= registers[(opcode & 0x00F0) >> 4];
+	pc += 2;
+}
+void Chip8::OP_8xy6()
+{
+	registers[0xF] = (registers[(opcode & 0x0F00) >> 8] & 0x1);
+	registers[(opcode & 0x0F00) >> 8] >>= 1;
+	pc += 2;
+}
+void Chip8::OP_8xy7()
+{
+	if(registers[(opcode & 0x00F0) >> 4] > registers[(opcode & 0x0F00) >> 8])
+	{
+		registers[0xF] = 1;
+	}
+	
+	else 
+	{
+		registers[0xF] = 0;
+	}
+	
+	registers[(opcode & 0x0F00) >> 8] = registers[(opcode & 0x00F0) >> 4] - registers[(opcode & 0x0F00) >> 8];
+	pc += 2;
+}
+void Chip8::OP_8xyE()
+{
+	registers[0xF] = ((registers[(opcode & 0x0F00) >> 8] & 0x80) >> 7);
+	registers[(opcode & 0x0F00) >> 8] <<= 1;
+	pc += 2;
+
+}
+void Chip8::OP_9xy0()
+{
+	if (registers[(opcode & 0x0F00) >> 8] != registers[(opcode & 0x00F0) >> 4])
+	{
+		pc += 4;
+	}
+
+	else pc += 2;
+}
+void Chip8::OP_Annn()
+{
+	ireg = (opcode & 0x0FFF);
+	pc += 2;
+}
+void Chip8::OP_Bnnn()
+{
+	pc = registers[0x0] + (opcode & 0x0FFF);
+
+}
+void Chip8::OP_Cxkk()
+{
+	registers[(opcode & 0x0F00) >> 8] = ((rand() % 255) & (opcode & 0x00FF));
+	pc += 2;
+}
+void Chip8::OP_Dxyn()
+{
+	unsigned char Vx = registers[(opcode & 0x0F00) >> 8];
+	unsigned char Vy = registers[(opcode & 0x00F0) >> 4];
+	unsigned char height = (opcode & 0x000F);
+	unsigned short pixel;
+	
+	registers[0xF] = 0;
+	
+	for (long iHeight = 0; iHeight < height; iHeight++)
+	{
+		pixel = memory[ireg + iHeight];
+		
+		for(long width = 0; width < 8; width++)
+		{
+			if((pixel & (0x80 >> width)) != 0)
+			{
+				if(display[((Vx + width) + ((Vy + iHeight) * 64))] == 0xFFFFFFFF)
+				{
+					registers[0xF] = 1;                                    
+				}
+				display[(Vx + width) + ((Vy + iHeight) * 64)] ^= 0xFFFFFFFF;
+			}
+		}
+	}
+	
+	pc += 2;
+}
+void Chip8::OP_Ex9E()
+{
+	if(keys[registers[(opcode & 0x0F00) >> 8]] != 0)
+	{
+		pc += 4;
+	}
+	
+	else pc += 2;
+}
+void Chip8::OP_ExA1()
+{
+	if(keys[registers[(opcode & 0x0F00) >> 8]] == 0)
+	{
+		pc += 4;
+	}
+	
+	else pc += 2;
+}
+void Chip8::OP_Fx07()
+{
+	registers[(opcode & 0x0F00) >> 8] = delayt;
+	pc += 2;
+}
+void Chip8::OP_Fx0A()
+{
+	bool keyPress = false;
+
+	for(int i = 0; i < 16; ++i)
+	{
+		if(keys[i] != 0)
+		{
+			registers[(opcode & 0x0F00) >> 8] = i;
+			keyPress = true;
+		}
+	}
+	
+	if(!keyPress)						
+		return;
+	pc += 2;	
+}
+void Chip8::OP_Fx15()
+{
+	delayt = registers[(opcode & 0x0F00) >> 8];
+	pc += 2;
+}
+void Chip8::OP_Fx18()
+{
+	soundt = registers[(opcode & 0x0F00) >> 8];
+	pc += 2;
+}
+void Chip8::OP_Fx1E()
+{
+	ireg += registers[(opcode & 0x0F00) >> 8];
+	pc += 2;
+}
+void Chip8::OP_Fx29()
+{
+	ireg = 0x50 + (registers[(opcode & 0x0F00) >> 8] * 0x5);
+	pc += 2;
+}
+void Chip8::OP_Fx33()
+{
+	memory[ireg]     = registers[(opcode & 0x0F00) >> 8] / 100;
+	memory[ireg + 1] = (registers[(opcode & 0x0F00) >> 8] / 10) % 10;
+	memory[ireg + 2] = (registers[(opcode & 0x0F00) >> 8] % 100) % 10;					
+	pc += 2;
+}
+void Chip8::OP_Fx55()
+{
+	for(long i = 0; i <= ((opcode & 0x0F00)>> 8); i++)
+	{
+		memory[ireg + i] = registers[i];
+	}
+						
+	pc += 2;
+}
+void Chip8::OP_Fx65()
+{
+	for(uint8_t i = 0; i <= ((opcode & 0x0F00) >> 8); i++)
+	{
+		registers[i] = memory[ireg + i];
+	}
+	
+	pc += 2;
 }
